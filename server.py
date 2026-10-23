@@ -2214,17 +2214,17 @@ def create_clock(body):
         except Exception:
             pass
 
-    _audit("clock", u["id"], creator, [{"action": "insert", "table": "chcks",
-                                        "id": new_id,
-                                        "row": {"type": ctype,
-                                                "whether_field": 1 if is_field else 0,
-                                                "clock_in_type": clock_in_type,
-                                                "x": lng, "y": lat,
-                                                "message": note or None,
-                                                "content": content or None,
-                                                "created_date": today,
-                                                "created_time": now_db.strftime(
-                                                    "%Y-%m-%d %H:%M:%S")}}])
+    _audit("clock", u["id"], u["name"], [{"action": "insert", "table": "chcks",
+                                          "id": new_id,
+                                          "row": {"type": ctype,
+                                                  "whether_field": 1 if is_field else 0,
+                                                  "clock_in_type": clock_in_type,
+                                                  "x": lng, "y": lat,
+                                                  "message": note or None,
+                                                  "content": content or None,
+                                                  "created_date": today,
+                                                  "created_time": now_db.strftime(
+                                                      "%Y-%m-%d %H:%M:%S")}}])
 
     return {"success": True, "clock_id": new_id,
             "kind": "field" if is_field else "in",
