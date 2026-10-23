@@ -30,6 +30,7 @@
 import os
 import sys
 import json
+import re
 import traceback
 import threading
 from datetime import datetime, date, timedelta
@@ -1192,6 +1193,105 @@ def list_week_plan(uid, yyyymm=None):
     finally:
         conn.close()
     return plans
+
+
+WP_CN = {1: "第一周", 2: "第二周", 3: "第三周", 4: "第四周", 5: "第五周"}
+
+
+def create_week_plan(body):
+    """
+    新建周计划（H5 「我的周计划」+ 新建按钮，2026-10-23）。
+
+    body: {"uid": 123, "dates": {"2026-10-26": {"am": "拜访XX医院", "pm": "…"}, …}}
+    口径对齐原 OA 表单 + trace_score v6.2：
+      · 周次 = ceil(日/7)（1-5），weekly=第X周 / weekly_id=X；ceil 永不跨月，
+        全部日期必须同月，否则 400
+      · monthly = 'YYYY-MM-01 00:00:00'（与存量一致）
+      · 每个有内容的日期一行明细：plan_date=date、新表单字段
+        morning_customer1 / afternoon_customer1（自由文本）、link_id=主表id 字符串
+    全部写入走 _audit 留痕（可 rollback.py 撤销）。
+    """
+    u = resolve_user(body.get("uid"))
+    if not u:
+        return {"success": False, "message": "用户不存在或未授权"}
+    dates = body.get("dates") or {}
+    if not isinstance(dates, dict) or not dates:
+        return {"success": False, "message": "请先填写至少一天的内容"}
+
+    clean = {}
+    months = set()
+    for ds, v in dates.items():
+        ds = str(ds or "").strip()
+        m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", ds)
+        if not m or v is None:
+            continue
+        try:
+            dd = datetime.strptime(ds, "%Y-%m-%d")
+        except ValueError:
+            continue
+        am = str(v.get("am") or "").strip()
+        pm = str(v.get("pm") or "").strip()
+        if not am and not pm:
+            continue
+        clean[ds] = {"am": am or None, "pm": pm or None}
+        months.add(ds[:7])
+    if not clean:
+        return {"success": False, "message": "请先填写至少一天的内容"}
+    if len(months) > 1:
+        return {"success": False, "message": "一次只能创建同一月份内的周计划"}
+
+    first = min(clean)  # "YYYY-MM-DD"
+    wn = (int(first[8:10]) + 6) // 7  # ceil(日/7)，与 v6.2 归周口径一致
+    weekly = WP_CN.get(wn, "第%d周" % wn)
+    monthly = "%s-01 00:00:00" % first[:7]
+    now_s = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_connection()
+    acts = []
+    plan_id = None
+    detail_ids = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO market_week_plan (weekly, weekly_id, monthly, "
+                "creator, creator_id, created_at, updated_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (weekly, wn, monthly, u["name"], u["id"], now_s, now_s))
+            plan_id = conn.insert_id()
+            acts.append({"action": "insert", "table": "market_week_plan",
+                         "id": plan_id,
+                         "row": {"weekly": weekly, "weekly_id": wn,
+                                 "monthly": monthly, "creator": u["name"],
+                                 "creator_id": u["id"],
+                                 "created_at": now_s, "updated_at": now_s}})
+            for ds in sorted(clean):
+                v = clean[ds]
+                cur.execute(
+                    "INSERT INTO market_weekly_plan_details "
+                    "(link_id, plan_date, morning_customer1, afternoon_customer1, "
+                    "creator, creator_id, created_at, updated_at) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (str(plan_id), ds, v["am"], v["pm"],
+                     u["name"], u["id"], now_s, now_s))
+                did = conn.insert_id()
+                detail_ids.append(did)
+                acts.append({"action": "insert", "table": "market_weekly_plan_details",
+                             "id": did,
+                             "row": {"link_id": str(plan_id), "plan_date": ds,
+                                     "morning_customer1": v["am"],
+                                     "afternoon_customer1": v["pm"],
+                                     "creator": u["name"], "creator_id": u["id"],
+                                     "created_at": now_s, "updated_at": now_s}})
+        conn.commit()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    _audit("week-plan", u["id"], u["name"], acts)
+
+    return {"success": True, "message": "周计划已保存（%s，%d 天）" % (weekly, len(clean)),
+            "plan_id": plan_id, "detail_ids": detail_ids}
 
 
 def score_history(uid, limit=20):
@@ -2458,6 +2558,13 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 with WRITE_LOCK:
                     res = create_clock(body or {})
+                self._send_json(200, res)
+            except Exception:
+                self._send_json(400, {"success": False, "message": traceback.format_exc()})
+        elif p == "/api/week-plan":
+            try:
+                with WRITE_LOCK:
+                    res = create_week_plan(body or {})
                 self._send_json(200, res)
             except Exception:
                 self._send_json(400, {"success": False, "message": traceback.format_exc()})

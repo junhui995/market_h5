@@ -256,6 +256,11 @@
   .hint{font-size:11px;color:var(--mut);margin-top:2px;}
   .egroup{margin-bottom:8px;}
   .egroup .gl{font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;}
+  /* 新建周计划弹窗：每日 上午/下午 两个输入框 */
+  .wp-inputs{display:flex;gap:6px;margin:6px 0 2px;}
+  .wp-inputs input{flex:1;min-width:0;border:1px solid #dfe5ee;border-radius:8px;
+    padding:8px 10px;font-size:13px;font-family:inherit;background:#f8fafc;}
+  .wp-inputs input:focus{border-color:var(--accent);outline:none;background:#fff;}
   /* 打卡 tab：圆按钮 */
   .clk-card{max-width:340px;margin:14px auto 0;text-align:center;background:#fff;
     border:1px solid #e3ede6;border-radius:16px;padding:26px 18px;}
@@ -297,7 +302,9 @@
       <div id="todo-checklist"><div class="loading">加载中…</div></div>
     </div>
     <div class="card">
-      <h3>我的周计划 <span class="tag" id="wp-month">本月</span></h3>
+      <h3 style="display:flex;align-items:center;gap:8px;">我的周计划
+        <span class="tag" id="wp-month">本月</span>
+        <button class="btn sm ghost" id="wp-new" style="margin-left:auto;">＋ 新建周计划</button></h3>
       <div id="todo-weekplan"><div class="loading">加载中…</div></div>
     </div>
     <div class="card">
@@ -353,6 +360,20 @@
     <div class="tb" data-sec="clock"><span class="ic">⏰</span>打卡</div>
     <div class="tb" data-sec="flow"><span class="ic">🔄</span>流程</div>
     <div class="tb" data-sec="mine"><span class="ic">📊</span>我的<span class="badge" id="mine-badge" style="display:none;">1</span></div>
+  </div>
+</div>
+
+<!-- 新建周计划弹窗 -->
+<div class="mask" id="wp-mask">
+  <div class="sheet">
+    <h4>新建周计划</h4>
+    <div class="field"><label>选择周（周次按 ceil(日/7) 归属，与绩效口径一致）</label>
+      <div class="chips2" id="wp-week-chips"></div></div>
+    <div id="wp-days"></div>
+    <div class="acts">
+      <button class="btn ghost" id="wp-cancel">取消</button>
+      <button class="btn" id="wp-save">保存</button>
+    </div>
   </div>
 </div>
 
@@ -638,6 +659,95 @@ function renderWeekPlan(plans){
 
 /* 已跟进客户集合：用于客户框打「已跟进」标记（由 loadTodo 从最近跟进填充） */
 let DONE_CUSTOMERS = new Set();
+
+/* ============================================================
+   新建周计划（2026-10-23）：ceil(日/7) 归周 → 第X周 chips + 上午/下午输入
+   ============================================================ */
+function wpWeeksOf(y, m){          // 月内按 ceil(日/7) 划周（1..5，永不跨月）
+  const last = new Date(y, m+1, 0).getDate();
+  const wks = [];
+  for(let d=1; d<=last; d++){
+    const n = Math.ceil(d/7);
+    if(!wks[n]) wks[n] = [];
+    wks[n].push(`${y}-${pad(m+1)}-${pad(d)}`);
+  }
+  return wks;
+}
+let WP_WEEK = 1;
+function wpRenderDays(){
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const days = wpWeeksOf(y, m)[WP_WEEK] || [];
+  el("wp-days").innerHTML = days.map(ds=>{
+    const dd = new Date(ds+"T00:00:00");
+    const isToday = ds === todayStr();
+    return `<div class="wp-day">
+      <div class="dline"><span class="d">${ds.slice(5).replace("-","/")}
+        <span class="wk">${WK[dd.getDay()]}</span>
+        ${isToday?'<span class="today">今天</span>':""}</span></div>
+      <div class="wp-inputs">
+        <input id="wp-am-${ds}" placeholder="上午（如：拜访市人民医院沟通方案）">
+        <input id="wp-pm-${ds}" placeholder="下午（选填）">
+      </div></div>`;
+  }).join("");
+}
+function openWeekPlan(){
+  const now = new Date();
+  const wks = wpWeeksOf(now.getFullYear(), now.getMonth());
+  const tn = Math.ceil(now.getDate()/7);
+  el("wp-week-chips").innerHTML = wks.map((days,i)=>{
+    if(!days) return "";
+    const l = ["","第一周","第二周","第三周","第四周","第五周"][i];
+    return `<span class="c2 ${i===tn?"on":""}" data-w="${i}">${l}
+      （${days[0].slice(5).replace("-","/")}~${days[days.length-1].slice(5).replace("-","/")}）</span>`;
+  }).join("");
+  WP_WEEK = tn || 1;
+  el("wp-week-chips").querySelectorAll(".c2").forEach(c=>{
+    c.onclick = ()=>{
+      WP_WEEK = +c.dataset.w;
+      el("wp-week-chips").querySelectorAll(".c2")
+        .forEach(x=>x.classList.toggle("on", x===c));
+      wpRenderDays();
+    };
+  });
+  wpRenderDays();
+  el("wp-mask").classList.add("open");
+}
+el("wp-new").onclick = openWeekPlan;
+el("wp-cancel").onclick = ()=> el("wp-mask").classList.remove("open");
+el("wp-mask").onclick = (e)=>{ if(e.target === el("wp-mask"))
+  el("wp-mask").classList.remove("open"); };
+async function saveWeekPlan(){
+  const inputs = el("wp-days").querySelectorAll("input");
+  const dates = {};
+  inputs.forEach(inp=>{
+    const m = inp.id.match(/^wp-(am|pm)-(\d{4}-\d{2}-\d{2})$/);
+    if(!m) return;
+    const v = inp.value.trim();
+    if(!v) return;
+    const ds = m[2];
+    dates[ds] = dates[ds] || {};
+    dates[ds][m[1]] = v;
+  });
+  if(!Object.keys(dates).length){ toast("请至少填写一天的内容"); return; }
+  const btn = el("wp-save");
+  btn.disabled = true; btn.textContent = "保存中…";
+  try{
+    const r = await api("/api/week-plan", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({uid: UID, dates})
+    });
+    if(!r.success) throw new Error(r.message);
+    toast(r.message || "周计划已保存");
+    el("wp-mask").classList.remove("open");
+    await Promise.all([loadTodo(), loadMine(), loadScoreHistory()]);
+  }catch(e){
+    toast("保存失败：" + e.message);
+  }finally{
+    btn.disabled = false; btn.textContent = "保存";
+  }
+}
+el("wp-save").onclick = saveWeekPlan;
 
 /* ============================================================
    流程：商机 / 项目
