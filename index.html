@@ -256,6 +256,24 @@
   .hint{font-size:11px;color:var(--mut);margin-top:2px;}
   .egroup{margin-bottom:8px;}
   .egroup .gl{font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;}
+  /* 打卡 tab：圆按钮 */
+  .clk-card{max-width:340px;margin:14px auto 0;text-align:center;background:#fff;
+    border:1px solid #e3ede6;border-radius:16px;padding:26px 18px;}
+  .clk-status{font-size:13px;color:var(--mut);margin-bottom:18px;}
+  .clk-btn{width:170px;height:170px;border-radius:50%;border:none;cursor:pointer;
+    background:linear-gradient(160deg,#2e7d4f,#155239);color:#fff;font-weight:700;
+    box-shadow:0 8px 24px rgba(21,82,57,.35), inset 0 -6px 14px rgba(0,0,0,.18);
+    font-size:20px;letter-spacing:2px;}
+  .clk-btn:active{transform:scale(.96);box-shadow:0 4px 12px rgba(21,82,57,.3);}
+  .clk-btn span{display:block;line-height:1.35;}
+  .clk-btn:disabled{opacity:.55;cursor:default;}
+  .clk-fix{margin-top:16px;text-align:left;background:#f7fbf8;border-radius:10px;
+    padding:10px;border:1px solid #e3ede6;}
+  .clk-fix .gl{font-size:12px;font-weight:600;color:var(--navy);margin-bottom:6px;}
+  .clk-fix textarea{width:100%;border:1px solid #d6deea;border-radius:8px;padding:8px 10px;
+    font-size:13px;font-family:inherit;background:#fff;box-sizing:border-box;}
+  .clk-fix .acts{margin-top:8px;}
+  .clk-tip{font-size:11px;color:var(--mut);margin-top:16px;}
 </style>
 </head>
 <body>
@@ -315,9 +333,24 @@
     </div>
   </div>
 
+  <!-- 打卡 -->
+  <div class="section" id="sec-clock">
+    <div class="clk-card">
+      <div id="clock-status" class="clk-status">今日尚未打卡</div>
+      <button class="clk-btn" id="clock-btn"><span>打<br/>卡</span></button>
+      <div id="clock-fix" class="clk-fix" style="display:none;">
+        <div class="gl">外勤说明（必填）</div>
+        <textarea id="clock-fix-txt" rows="3" placeholder="如：拜访／外出办事／外出客户维护…"></textarea>
+        <div class="acts"><button class="btn" id="clock-fix-save" style="width:100%;">提交外勤打卡</button></div>
+      </div>
+      <div class="clk-tip">公司 300 米内自动记内勤，300 米外记外勤（可打卡时段 7:00–20:00）</div>
+    </div>
+  </div>
+
   <!-- 底部 tab -->
   <div class="tabbar">
     <div class="tb on" data-sec="todo"><span class="ic">✅</span>待办</div>
+    <div class="tb" data-sec="clock"><span class="ic">⏰</span>打卡</div>
     <div class="tb" data-sec="flow"><span class="ic">🔄</span>流程</div>
     <div class="tb" data-sec="mine"><span class="ic">📊</span>我的<span class="badge" id="mine-badge" style="display:none;">1</span></div>
   </div>
@@ -492,6 +525,7 @@ document.querySelectorAll(".tabbar .tb").forEach(tb=>{
     document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
     el("sec-"+sec).classList.add("active");
     if(sec==="mine"){ clearBadge(); loadMine(); loadScoreHistory(); }
+    if(sec==="clock"){ loadClockStatus(); }
   };
 });
 
@@ -1165,6 +1199,63 @@ el("fu-submit").onclick = async ()=>{
     }else{ toast("保存失败："+d.message); }
   }catch(e){ toast("保存失败："+e.message); }
   finally{ btn.disabled = false; btn.textContent = "保存跟进"; }
+};
+
+/* ============================================================
+   打卡 tab：一键打卡 → GPS 距公司 300m 内勤 / 外勤分流
+   （时间窗、外出/出差校验、迟到/早退档位由后端 /api/clock 判定）
+   ============================================================ */
+let CLOCK_PENDING = null;    /* 外勤说明待提交时缓存的 {lat,lng} */
+async function loadClockStatus(){
+  try{
+    const d = await api("/api/clock-status?uid="+encodeURIComponent(UID));
+    if(d.success){
+      const b = el("clock-status");
+      if(d.last){
+        b.textContent = "今日已打卡 " + d.today_count + " 次 · 上次 " + d.last.time + " " +
+          (d.last.is_field? "外勤" : "内勤") + "（" + (d.last.clock_in_type || "") + "）";
+      }else{
+        b.textContent = "今日尚未打卡（服务器时间 " + (d.server_now || "") + "）";
+      }
+    }
+  }catch(e){ /* 状态栏静默失败 */ }
+}
+function doClock(contentOverride){
+  const btn = el("clock-btn");
+  if(btn.disabled) return;
+  if(!navigator.geolocation){ toast("该环境不支持定位，请在手机企微中打开"); return; }
+  btn.disabled = true;
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    try{
+      const d = await api("/api/clock", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({uid: UID, lat: lat, lng: lng, content: contentOverride || ""})});
+      if(d.success){
+        CLOCK_PENDING = null;
+        el("clock-fix").style.display = "none";
+        toast((d.kind==="field"? "外勤打卡成功" : "内勤打卡成功") + " · " +
+              (d.clock_in_type || "") + "（" + d.type_label + "）");
+        loadClockStatus();
+      }else if(d.need_content){
+        CLOCK_PENDING = {lat: lat, lng: lng};
+        el("clock-fix").style.display = "block";
+        el("clock-fix-txt").value = "";
+        toast("在 300 米外（外勤），请填写外勤说明");
+      }else{
+        toast(d.message);
+      }
+    }catch(e2){ toast("打卡失败：" + e2.message); }
+    finally{ btn.disabled = false; }
+  }, ()=>{ btn.disabled = false; toast("定位失败，请开启手机定位后重试"); },
+     {enableHighAccuracy: true, timeout: 12000, maximumAge: 30000});
+}
+el("clock-btn").onclick = ()=> doClock("");
+el("clock-fix-save").onclick = ()=>{
+  const txt = el("clock-fix-txt").value.trim();
+  if(!txt){ toast("请填写外勤说明"); return; }
+  if(CLOCK_PENDING){ doClock(txt); }
+  else{ toast("定位已失效，请重新点击打卡按钮"); el("clock-fix").style.display = "none"; }
 };
 
 /* ---------- toast ---------- */

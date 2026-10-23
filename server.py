@@ -32,7 +32,7 @@ import sys
 import json
 import traceback
 import threading
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 
 import pymysql
@@ -621,7 +621,8 @@ def resolve_user(uid):
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, name, dept_id, jobs_id, wx_id, if_marketing_department "
+                "SELECT id, name, dept_id, jobs_id, wx_id, if_marketing_department, "
+                "if_marketing_department_id "
                 "FROM users WHERE id=%s AND user_type_id='hua_fu_oa' AND deleted_at IS NULL LIMIT 1",
                 (uid,))
             u = cur.fetchone()
@@ -637,6 +638,7 @@ def resolve_user(uid):
             "dept_id": u.get("dept_id"),
             "jobs_id": jobs_id,
             "wx_id": u.get("wx_id") or "",
+            "if_marketing_department_id": u.get("if_marketing_department_id"),
             "is_marketing": is_marketing,
             "is_director": is_director,
             "is_manager": is_manager,
@@ -1602,6 +1604,42 @@ E_GROUPS = [
       "内部合同交底/项目移交"]),
 ]
 
+# ============================================================
+# 打卡 tab（2026-10-22 新增，对齐 OA「内勤打卡/外勤打卡」脚本 + 生产数据实证）
+#   · 公司坐标：内勤 chcks 行 1.8 万条聚类 (118.85895, 32.02256)，可用环境变量覆盖
+#   · 300m 分界：≤300m 内勤，>300m 外勤（半径可配）
+#   · 时间窗 7:00–20:00（原内勤脚本拦截文案原样保留）
+#   · 上/下班：单按钮上午打上班(type=0)、下午打下班(type=1)
+#     迟到分界 08:30（生产 8.0-8.5 桶 正常上班 6.0 万 vs 迟到 5 条实证）
+#     早退分界 17:30（17.5-18.0 桶 正常下班 2.1 万实证）
+#   · 外勤需外出/出差申请：仅 if_marketing_department_id != 717 且不在白名单时校验
+#     （对齐原 OA 脚本的 isFieldDept 判定），白名单工号原样照抄
+#   · 绩效安全：拜访客户量只数 type=2，纯打卡(0/1)不动计分
+# ============================================================
+CLOCK_COMPANY_LNG = float(os.getenv("MH5_COMPANY_LNG", "118.85895"))
+CLOCK_COMPANY_LAT = float(os.getenv("MH5_COMPANY_LAT", "32.02256"))
+CLOCK_RADIUS_M = float(os.getenv("MH5_CLOCK_RADIUS_M", "300"))
+CLOCK_EXEMPT_IDS = {
+    "3155", "3506", "1826234081", "1826234217", "10404", "10464", "10463", "10459",
+    "1826234000", "1826234088", "1826234097", "1996234394", "1826234003", "1826234180",
+    "1826234162", "1996234272", "1826234215", "1826234226", "1926234273", "1926234272",
+    "1826234268", "1826234193", "1826234071", "1826234188", "1826234189", "1826234190",
+    "1826234191", "1826234192", "3381", "1926234271", "1996234391", "1826234241",
+    "1826234267", "3184", "10649", "1996234401",
+}
+CLOCK_MULTI_ACCOUNT_IDS = {"1996234397", "1996234398"}   # 周剑双号
+
+
+def _clock_distance_m(lat, lng):
+    """Haversine 距离（米），公司坐标为基准点。"""
+    import math
+    r = 6371000.0
+    p1, p2 = math.radians(CLOCK_COMPANY_LAT), math.radians(lat or 0.0)
+    dl = math.radians((lng or 0.0) - CLOCK_COMPANY_LNG)
+    dp = p2 - p1
+    a = (math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2)
+    return 2 * r * math.asin(math.sqrt(a))
+
 
 def _clean(v):
     """字符串入参去空；数组转逗号串（options 多选）。"""
@@ -2008,6 +2046,151 @@ def create_follow_up(body):
 
 
 # ============================================================
+# 写：打卡 tab（一键打卡，内勤/外勤自动分流）
+# ============================================================
+def create_clock(body):
+    """单按钮打卡：
+      · GPS ≤300m → 内勤：type=0(上午)/1(下午)，clock_in_type 按 08:30/17:30 档判定
+      · GPS >300m → 外勤：type 同上，whether_field=1，clock_in_type='外勤打卡'；
+        非 717 部门且非白名单需有在时效内的外出或出差申请；外勤说明 content 必填
+      · 时间窗 7:00–20:00（服务器时间，与 OA 平台时钟一致）
+      · chcks 行不落 artificial type=2，不影响 9 项指标计分
+    响应：{kind: in|field, clock_in_type, type_label, today_count, dist_m}
+    """
+    uid = body.get("uid")
+    u = resolve_user(uid)
+    if not u:
+        return {"success": False, "message": "用户不存在或未授权"}
+    try:
+        lat = float(body.get("lat"))
+        lng = float(body.get("lng"))
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            raise ValueError
+        if abs(lat) < 0.01 and abs(lng) < 0.01:
+            raise ValueError
+    except (TypeError, ValueError):
+        return {"success": False, "message": "未能获取定位，请开启手机定位后重试"}
+
+    note = (body.get("note") or "").strip()
+    content = (body.get("content") or "").strip()
+
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            # 服务器时间（DB NOW 与 OA 平台时钟对齐，避免容器时区差）
+            cur.execute("SELECT NOW() nw")
+            now_db = cur.fetchone()["nw"]
+            hour = now_db.hour
+            today = now_db.strftime("%Y-%m-%d")
+            if hour < 7:
+                conn.close()
+                return {"success": False, "message": "早于 7:00，暂不能打卡"}
+            if hour >= 20:
+                conn.close()
+                return {"success": False, "message": "已超过 20:00，今日无法打卡"}
+
+            dist_m = round(_clock_distance_m(lat, lng), 1)
+            is_field = dist_m > CLOCK_RADIUS_M
+            if is_field:
+                # 外勤分组校验：对齐原 OA 脚本（仅非 717 且非白名单者需要）
+                if u["if_marketing_department_id"] != 717 and \
+                        str(u["id"]) not in CLOCK_EXEMPT_IDS and \
+                        str(u["id"]) not in CLOCK_MULTI_ACCOUNT_IDS:
+                    g1 = now_db + timedelta(minutes=60)
+                    cur.execute(
+                        "SELECT id FROM `out` WHERE creator_id=%s AND deleted_at IS NULL "
+                        "AND start_time<=%s AND end_of_time>=%s LIMIT 1",
+                        (u["id"], g1.strftime("%Y-%m-%d %H:%M:%S"),
+                         now_db.strftime("%Y-%m-%d %H:%M:%S")))
+                    out_ok = cur.fetchone() is not None
+                    if not out_ok:
+                        cur.execute(
+                            "SELECT id FROM business_travel WHERE creator_id=%s "
+                            "AND deleted_at IS NULL AND start_time<=%s AND end_of_time>=%s "
+                            "LIMIT 1",
+                            (u["id"], today + " 23:59:59", today))
+                        travel_ok = cur.fetchone() is not None
+                    if not out_ok and not travel_ok:
+                        conn.close()
+                        return {"success": False,
+                                "message": "没有相应的外出或出差申请，请先发起申请"}
+                if not content:
+                    conn.close()
+                    # 外勤说明必填（原脚本"未填写外勤说明"），返回提示由前端追问
+                    return {"success": False, "need_content": True, "is_field": True,
+                            "message": "外勤打卡需填写外勤说明"}
+
+            ctype = 0 if hour < 12 else 1
+            if is_field:
+                clock_in_type = "外勤打卡"
+            elif ctype == 0:
+                clock_in_type = "正常上班" if now_db.time() < _t(8, 30) else "迟到"
+            else:
+                clock_in_type = "正常下班" if now_db.time() >= _t(17, 30) else "早退"
+
+            cur.execute(
+                "INSERT INTO chcks (type, whether_field, clock_in_type, x, y, location, "
+                "message, content, creator, creator_id, created_date, created_time, "
+                "created_at, updated_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (ctype, 1 if is_field else 0, clock_in_type,
+                 lng, lat, "%.5f,%.5f" % (lat, lng), note or None,
+                 content or None, u["name"], u["id"],
+                 today, now_db.strftime("%Y-%m-%d %H:%M:%S"),
+                 now_db.strftime("%Y-%m-%d %H:%M:%S"), now_db.strftime("%Y-%m-%d %H:%M:%S")))
+            new_id = conn.insert_id()
+            cur.execute(
+                "SELECT COUNT(*) AS c FROM chcks WHERE creator_id=%s AND deleted_at IS NULL "
+                "AND created_date=%s", (u["id"], today))
+            today_count = cur.fetchone()["c"]
+        conn.commit()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    return {"success": True, "clock_id": new_id,
+            "kind": "field" if is_field else "in",
+            "type_label": "上班打卡" if ctype == 0 else "下班打卡",
+            "clock_in_type": clock_in_type,
+            "today_count": today_count, "dist_m": dist_m}
+
+
+def clock_status(uid):
+    """今日打卡状态（圆钮下方文案）。"""
+    u = resolve_user(uid)
+    if not u:
+        return {"success": False, "message": "用户不存在或未授权"}
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT NOW() nw")
+            now_db = cur.fetchone()["nw"]
+            cur.execute(
+                "SELECT created_time, whether_field, clock_in_type FROM chcks "
+                "WHERE creator_id=%s AND deleted_at IS NULL AND created_date=%s "
+                "ORDER BY id DESC LIMIT 1", (u["id"], now_db.strftime("%Y-%m-%d")))
+            last = cur.fetchone()
+            cur.execute(
+                "SELECT COUNT(*) AS c FROM chcks WHERE creator_id=%s AND deleted_at IS NULL "
+                "AND created_date=%s", (u["id"], now_db.strftime("%Y-%m-%d")))
+            today_count = cur.fetchone()["c"]
+    finally:
+        conn.close()
+    return {"success": True, "today_count": today_count,
+            "server_now": now_db.strftime("%Y-%m-%d %H:%M"),
+            "last": ({"time": last["created_time"].strftime("%H:%M"),
+                      "clock_in_type": last["clock_in_type"],
+                      "is_field": bool(last["whether_field"])} if last else None)}
+
+
+def _t(h, m):
+    import datetime as _dt
+    return _dt.time(h, m)
+
+
+# ============================================================
 # HTTP 服务
 # ============================================================
 class Handler(BaseHTTPRequestHandler):
@@ -2169,6 +2352,14 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 self._send_json(200, picker_options(u["id"], gv("q")))
 
+            elif p == "/api/clock-status":
+                # 打卡 tab：今日打卡状态（次数 / 上次记录 / 服务器当前时间）
+                u = resolve_user(uid)
+                if not u:
+                    self._send_json(401, {"success": False, "message": "未授权"})
+                    return
+                self._send_json(200, clock_status(u["id"]))
+
             else:
                 self._send_json(404, {"success": False, "message": "not found"})
         except Exception:
@@ -2184,6 +2375,13 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 with WRITE_LOCK:
                     res = create_follow_up(body or {})
+                self._send_json(200, res)
+            except Exception:
+                self._send_json(400, {"success": False, "message": traceback.format_exc()})
+        elif p == "/api/clock":
+            try:
+                with WRITE_LOCK:
+                    res = create_clock(body or {})
                 self._send_json(200, res)
             except Exception:
                 self._send_json(400, {"success": False, "message": traceback.format_exc()})
