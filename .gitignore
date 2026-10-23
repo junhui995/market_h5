@@ -1,0 +1,17 @@
+# 明文凭证脚本一律不入库（SSH/DB 密码硬编码，凭外部凭证文件运行）
+.tmp_*
+__pycache__/
+deploy.py
+copy_launch.py
+copy_poll.py
+copy_view.py
+write_test.py
+test_new.py
+diag*.py
+inspect*.py
+inspect_remote.py
+verify_remote*.py
+verify_remote2*.py
+probe*.py
+fix_upload.py
+*.log

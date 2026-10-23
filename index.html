@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>市场部工作台</title>
+<style>
+  :root{
+    --navy:#16483a; --navy2:#0f2f27; --blue:#3d7e5f; --accent:#2f8a55;
+    --green:#2f8a55; --amber:#e09c2d; --grey:#cfd8d2; --bg:#f2f7f3;
+    --card:#ffffff; --txt:#1e2b24; --mut:#72887d; --red:#d9534f;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:14px;line-height:1.5;}
+  #app{max-width:480px;margin:0 auto;background:var(--bg);min-height:100vh;
+    padding-bottom:64px;position:relative;}
+  /* 顶部 */
+  .topbar{background:linear-gradient(135deg,#2e7d54,#1d5838);color:#fff;
+    padding:14px 16px;display:flex;align-items:center;justify-content:space-between;}
+  .topbar .who{font-size:16px;font-weight:600;}
+  .topbar .role{font-size:11px;opacity:.8;margin-top:2px;}
+  .topbar .yy{font-size:11px;opacity:.85;}
+  /* 区块 */
+  .section{display:none;padding:12px;}
+  .section.active{display:block;}
+  .card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px;
+    box-shadow:0 1px 3px rgba(22,72,58,.06);}
+  .card h3{margin:0 0 10px;font-size:14px;color:var(--navy);display:flex;
+    align-items:center;justify-content:space-between;}
+  .card h3 .tag{font-size:11px;color:var(--mut);font-weight:400;}
+  /* 任务清单 */
+  .chk{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #eef4f0;}
+  .chk:last-child{border-bottom:none;}
+  .chk .dot{width:10px;height:10px;border-radius:50%;margin-right:10px;flex:0 0 auto;}
+  .chk .info{flex:1;}
+  .chk .info .m{font-weight:600;}
+  .chk .info .sub{font-size:12px;color:var(--mut);}
+  .chk .prog{font-weight:700;color:var(--navy);}
+  .bar{height:6px;border-radius:3px;background:#e6efe9;margin-top:6px;overflow:hidden;}
+  .bar > i{display:block;height:100%;background:var(--accent);}
+
+  /* ---------- 周计划 + 客户框（点击录入跟进） ---------- */
+  .wp-week{font-weight:600;margin:12px 0 6px;color:var(--navy2);
+    display:flex;align-items:center;gap:6px;}
+  .wp-week:first-child{margin-top:0;}
+  .wp-week .dotx{width:6px;height:6px;border-radius:50%;background:var(--accent);}
+  .wp-day{padding:8px 0;border-bottom:1px dashed #eaf3ec;}
+  .wp-day:last-child{border-bottom:none;}
+  .wp-day .dline{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .wp-day .dline .d{font-size:12px;color:var(--mut);font-weight:600;}
+  .wp-day .dline .d .wk{color:var(--accent);margin-left:4px;font-weight:700;}
+  .wp-day .dline .today{background:var(--accent);color:#fff;border-radius:4px;
+    padding:1px 5px;font-size:10px;margin-left:4px;}
+  /* 每个客户一个可点击的框 */
+  .cboxes{display:flex;flex-direction:column;gap:6px;}
+  .cbox{display:flex;align-items:center;gap:8px;background:#f4f9f5;border:1px solid #dfe9e2;
+    border-radius:9px;padding:9px 10px;cursor:pointer;transition:background .15s;}
+  .cbox:active{background:#e9f3ec;border-color:#bcd9c8;}
+  .cbox .ampm{flex:0 0 auto;font-size:10px;font-weight:700;color:#fff;border-radius:4px;
+    padding:2px 5px;}
+  .cbox.am .ampm{background:#3d7e5f;}
+  .cbox.pm .ampm{background:#7a5cd6;}
+  .cbox .cust{flex:1;min-width:0;font-size:13px;font-weight:600;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cbox .go{flex:0 0 auto;font-size:11px;color:var(--accent);font-weight:700;}
+  .cbox.done{background:#f0f9f4;border-color:#c9ead9;}
+  .cbox.done .go{color:var(--green);}
+  .cbox.done .cust::after{content:" · 已跟进";font-size:10px;color:var(--green);font-weight:600;}
+  .cbox.none{background:#fff;border-style:dashed;cursor:default;color:var(--mut);}
+  .cbox.none .cust{font-weight:400;color:var(--mut);}
+  .cbox.none .go{color:var(--mut);}
+  .empty{color:var(--mut);font-size:13px;text-align:center;padding:14px 0;}
+
+  /* 流程 */
+  .seg{display:flex;border-radius:10px;background:#e6ecf3;padding:3px;margin-bottom:12px;}
+  .seg div{flex:1;text-align:center;padding:8px 0;border-radius:8px;font-size:13px;
+    color:var(--mut);font-weight:600;}
+  .seg div.on{background:#fff;color:var(--navy);box-shadow:0 1px 2px rgba(0,0,0,.08);}
+  .item{background:#fff;border-radius:12px;margin-bottom:10px;overflow:hidden;
+    box-shadow:0 1px 3px rgba(22,72,58,.06);}
+  .item .row{display:flex;align-items:center;padding:12px;cursor:pointer;}
+  .item .row .tt{flex:1;min-width:0;}
+  .item .row .tt .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .item .row .tt .mt{font-size:12px;color:var(--mut);margin-top:2px;}
+  .item .row .op{flex:0 0 auto;margin-left:8px;}
+  .item .row .caret{flex:0 0 auto;margin-left:6px;color:var(--mut);font-size:11px;
+    transition:transform .2s;}
+  .item.open .row .caret{transform:rotate(180deg);}
+  .btn{display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:8px;
+    padding:7px 12px;font-size:12px;font-weight:600;white-space:nowrap;}
+  .btn.ghost{background:#eaf3ec;color:var(--navy);}
+  .btn.sm{padding:5px 9px;font-size:11px;}
+  /* 生命条 */
+  .lifebar{display:flex;align-items:center;padding:6px 12px 12px;}
+  .lifebar .node{flex:1;text-align:center;position:relative;}
+  .lifebar .node .ln{height:5px;background:var(--grey);position:relative;z-index:1;}
+  .lifebar .node:first-child .ln{border-radius:3px 0 0 3px;}
+  .lifebar .node:last-child .ln{border-radius:0 3px 3px 0;}
+  .lifebar .node .pt{width:14px;height:14px;border-radius:50%;background:var(--grey);
+    margin:0 auto 4px;border:2px solid #fff;position:relative;z-index:2;}
+  .lifebar .node.done .pt,.lifebar .node.done .ln{background:var(--green);}
+  .lifebar .node.doing .pt{background:var(--amber);box-shadow:0 0 0 3px rgba(224,156,45,.25);}
+  .lifebar .node.doing .ln{background:linear-gradient(90deg,var(--green),var(--amber));}
+  .lifebar .node .lbl{font-size:10px;color:var(--mut);}
+  .lifebar .node.done .lbl{color:var(--green);}
+  .lifebar .node.doing .lbl{color:var(--amber);}
+  /* 详情展开：英文 key 在上，中文名 + 值在下 */
+  .detail{display:none;padding:2px 12px 12px;border-top:1px solid #eef4f0;background:#f7fbf8;}
+  .detail.open{display:block;}
+  .detail .sec-t{font-size:11px;font-weight:700;color:var(--navy2);letter-spacing:.5px;
+    margin:12px 0 6px;padding-left:7px;border-left:3px solid var(--accent);}
+  .detail .kv{padding:6px 0;border-bottom:1px dashed #eaeff6;}
+  .detail .kv:last-child{border-bottom:none;}
+  .detail .kv .fk{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:10px;color:#93a3b6;letter-spacing:0;line-height:1.2;word-break:break-all;}
+  .detail .kv .fv{font-size:12.5px;line-height:1.45;margin-top:1px;}
+  .detail .kv .fl{color:var(--mut);margin-right:6px;}
+  .detail .kv .fl::after{content:"：";}
+  .detail .kv .vt{color:var(--txt);font-weight:600;word-break:break-all;}
+  .detail .flows{margin-top:4px;}
+  .detail .flows .f{font-size:12px;padding:4px 0;display:flex;align-items:center;gap:6px;}
+  .detail .flows .pill{border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;
+    background:#eaf3ec;color:var(--navy);}
+  .detail .flows .pill.done{background:#e3f3e9;color:var(--green);}
+  .detail .flows .pill.doing{background:#fdf3dc;color:#9a6b00;}
+
+  /* 我的 */
+  .total{text-align:center;padding:8px 0 4px;}
+  .total .num{font-size:34px;font-weight:800;color:var(--navy);}
+  .total .lbl{font-size:12px;color:var(--mut);}
+  .metric{margin-bottom:12px;}
+  .metric .hd{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;}
+  .metric .hd .n{font-weight:600;}
+  .metric .hd .v{color:var(--mut);}
+  .metric .hd .s{font-weight:700;color:var(--navy);}
+  .mbar{height:8px;border-radius:4px;background:#e6efe9;overflow:hidden;}
+  .wpd{margin-top:8px;border-top:1px dashed #d6deea;padding-top:7px;}
+  .wpd-r{display:flex;justify-content:space-between;font-size:10.5px;color:var(--mut);padding:2.5px 0;}
+  .wpd-r b{color:var(--navy);}
+  .wpd-f{font-size:10px;color:#9aa8bd;margin-top:5px;line-height:1.5;}
+  .mbar > i{display:block;height:100%;background:linear-gradient(90deg,#3d7e5f,#2f8a55);}
+
+  /* ---------- 冒泡窗口：最近的加分记录 ---------- */
+  .bubble{position:relative;background:#fff;border:1px solid #dfe9e2;border-radius:14px;
+    padding:14px;margin:6px 0 4px;box-shadow:0 2px 10px rgba(16,42,74,.10);}
+  .bubble::before{content:"";position:absolute;top:-7px;left:28px;width:13px;height:13px;
+    background:#fff;border-left:1px solid #dfe9e2;border-top:1px solid #dfe9e2;
+    transform:rotate(45deg);}
+  .bubble-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .bubble-hd .bh-t{font-size:13px;font-weight:700;color:var(--navy);display:flex;
+    align-items:center;gap:6px;}
+  .bubble-hd .bh-t .live{width:6px;height:6px;border-radius:50%;background:var(--green);
+    box-shadow:0 0 0 3px rgba(31,157,107,.18);}
+  .bubble-hd .bh-s{font-size:11px;color:var(--green);font-weight:700;}
+  .sh{display:flex;align-items:flex-start;gap:9px;padding:8px 0;border-bottom:1px dashed #eaf3ec;}
+  .sh:last-child{border-bottom:none;}
+  .sh .sh-d{flex:0 0 auto;min-width:48px;text-align:center;font-weight:800;font-size:13px;
+    color:#fff;background:linear-gradient(135deg,#2f8a55,#3fa468);border-radius:7px;padding:4px 6px;}
+  .sh .sh-m{flex:1;min-width:0;}
+  .sh .sh-m .sh-t{font-size:12.5px;font-weight:600;color:var(--navy);}
+  .sh .sh-m .sh-n{font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;}
+  .sh .sh-time{flex:0 0 auto;font-size:10px;color:#a3b0bf;padding-top:2px;}
+  .bubble .foot{text-align:center;font-size:10.5px;color:#a3b0bf;margin-top:8px;}
+
+  /* 底部 tab */
+  .tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;
+    height:60px;background:#fff;border-top:1px solid #e6ecf3;display:flex;}
+  .tabbar .tb{flex:1;text-align:center;padding:8px 0;color:var(--mut);font-size:11px;
+    position:relative;cursor:pointer;}
+  .tabbar .tb.on{color:var(--accent);font-weight:700;}
+  .tabbar .tb .ic{font-size:20px;display:block;margin-bottom:2px;}
+  .badge{position:absolute;top:4px;right:50%;margin-right:-22px;min-width:16px;height:16px;
+    background:var(--red);color:#fff;border-radius:9px;font-size:10px;line-height:16px;padding:0 4px;}
+  /* 弹窗 */
+  .mask{position:fixed;inset:0;background:rgba(15,42,74,.45);display:none;z-index:50;
+    align-items:flex-end;justify-content:center;}
+  .mask.open{display:flex;}
+  .sheet{background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:16px;
+    max-height:86vh;overflow:auto;}
+  .sheet h4{margin:0 0 12px;color:var(--navy);font-size:15px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12px;color:var(--mut);margin-bottom:5px;}
+  .field input,.field textarea,.field select{width:100%;border:1px solid #d6deea;border-radius:8px;
+    padding:9px 10px;font-size:14px;font-family:inherit;background:#f7fbf8;}
+  .field textarea{resize:vertical;min-height:72px;}
+  .field input[readonly]{background:#eef5f0;color:var(--navy);font-weight:600;}
+  .switch{display:flex;align-items:center;justify-content:space-between;background:#f4f7fb;
+    border-radius:8px;padding:10px 12px;cursor:pointer;}
+  .switch .st{color:var(--accent);font-size:12px;font-weight:600;}
+  .geo{font-size:11px;color:var(--mut);margin-top:4px;}
+
+  /* ---------- 跟进弹窗：客户/项目/商机 关联图标 ---------- */
+  .irow{display:flex;gap:10px;margin-bottom:10px;}
+  .iopt{flex:1;text-align:center;background:#f4f9f5;border:1px solid #dfe9e2;
+    border-radius:10px;padding:9px 0 7px;cursor:pointer;transition:all .15s;}
+  .iopt:active{background:#e9f3ec;}
+  .iopt .ic{display:block;font-size:20px;margin-bottom:2px;}
+  .iopt .t{font-size:11.5px;color:var(--mut);display:block;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;padding:0 4px;}
+  .iopt.on{background:#eaf5ee;border-color:var(--accent);}
+  .iopt.on .t{color:var(--accent);font-weight:600;}
+  .iopt.exp{border-color:var(--accent);background:#eef8f1;}
+  .ppanel{background:#fff;border:1px solid #dfe9e2;border-radius:10px;
+    margin:0 0 12px;overflow:hidden;}
+  .ppanel .psearch{display:flex;align-items:center;gap:6px;border-bottom:1px solid #eef4f0;
+    padding:7px 10px;}
+  .ppanel .psearch input{flex:1;border:1px solid #d6deea;border-radius:8px;
+    padding:7px 9px;font-size:13px;font-family:inherit;background:#f7fbf8;}
+  .flist{max-height:190px;overflow:auto;}
+  .fitem{padding:9px 12px;border-bottom:1px dashed #eaf3ec;cursor:pointer;}
+  .fitem:last-child{border-bottom:none;}
+  .fitem .fm{font-size:13px;line-height:1.4;}
+  .fitem .fs{font-size:11px;color:var(--mut);margin-top:1px;}
+  .fitem:active,.fitem.on{background:#eaf5ee;}
+  .fitem.on .fm{color:var(--accent);font-weight:600;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
+  .chip{display:inline-flex;align-items:center;max-width:100%;background:#eaf5ee;
+    border:1px solid #bcd9c8;border-radius:20px;padding:4px 10px;font-size:11.5px;
+    color:var(--navy);cursor:pointer;}
+  .chip b{color:var(--red);margin-left:4px;font-weight:700;}
+  .chip span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;}
+  .sheet .acts{display:flex;gap:10px;margin-top:6px;}
+  .sheet .acts .btn{flex:1;text-align:center;padding:11px 0;font-size:14px;}
+  .toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);background:rgba(15,42,74,.92);
+    color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;z-index:80;display:none;max-width:90%;}
+  .toast.show{display:block;animation:fade 2.6s forwards;}
+  @keyframes fade{0%{opacity:0;transform:translate(-50%,-8px);}12%{opacity:1;transform:translateX(-50%);}
+    80%{opacity:1;}100%{opacity:0;}}
+  .devbar{background:#fff7e6;border-bottom:1px solid #ffe2a8;padding:6px 12px;font-size:12px;
+    color:#8a5a00;display:flex;justify-content:space-between;align-items:center;}
+  .devbar select{border:1px solid #e09c2d;border-radius:6px;padding:3px 6px;}
+  .loading{text-align:center;color:var(--mut);padding:24px 0;font-size:13px;}
+  .err{color:var(--red);font-size:12px;text-align:center;padding:12px;}
+  /* 跟进弹窗 v2：分区折叠 + 条选 chips（2026-10-22 原外勤打卡表单复现） */
+  .fold{border:1px solid #e3ede6;border-radius:10px;padding:8px 10px;margin-bottom:10px;}
+  .fold summary{font-size:13px;font-weight:600;color:var(--navy);cursor:pointer;
+    list-style:none;user-select:none;}
+  .fold summary::before{content:"▸";display:inline-block;margin-right:6px;color:var(--accent);
+    transition:transform .15s;}
+  .fold[open]{padding-bottom:4px;}
+  .fold[open] summary{margin-bottom:8px;}
+  .fold[open] summary::before{transform:rotate(90deg);}
+  .chips2{display:flex;flex-wrap:wrap;gap:6px;}
+  .chips2 .c2{border:1px solid #d4e3d9;background:#f4f9f5;color:var(--navy);
+    border-radius:14px;padding:4px 10px;font-size:11.5px;cursor:pointer;white-space:nowrap;}
+  .chips2 .c2.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+  .chips2.glabel{gap:4px 8px;}
+  .chips2.glabel .gl{width:100%;font-weight:600;color:var(--tint,#155239);}
+  .rel-val{border:1px solid #e3ede6;border-radius:8px;background:#f8fbf9;padding:8px 10px;
+    font-size:13px;color:var(--navy);}
+  .row2{display:flex;gap:10px;}
+  .row2 .field{flex:1;}
+  .hint{font-size:11px;color:var(--mut);margin-top:2px;}
+  .egroup{margin-bottom:8px;}
+  .egroup .gl{font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="devbar" id="devbar" style="display:none;">
+    <span>调试 · 白名单账号切换</span>
+    <select id="devUid"></select>
+  </div>
+  <div class="topbar">
+    <div>
+      <div class="who" id="who">市场部工作台</div>
+      <div class="role" id="role">加载中…</div>
+    </div>
+    <div class="yy" id="yy"></div>
+  </div>
+
+  <!-- ============ 待办 ============ -->
+  <div class="section active" id="sec-todo">
+    <div class="card">
+      <h3>考核任务清单 <span class="tag" id="todo-month"></span></h3>
+      <div id="todo-checklist"><div class="loading">加载中…</div></div>
+    </div>
+    <div class="card">
+      <h3>我的周计划 <span class="tag" id="wp-month">本月</span></h3>
+      <div id="todo-weekplan"><div class="loading">加载中…</div></div>
+    </div>
+    <div class="card">
+      <h3>最近跟进 <span class="tag">点击上方客户框可直接录入</span></h3>
+      <div id="todo-recent"><div class="loading">加载中…</div></div>
+    </div>
+  </div>
+
+  <!-- ============ 流程 ============ -->
+  <div class="section" id="sec-flow">
+    <div class="seg">
+      <div class="on" data-tab="project" id="seg-project">项目</div>
+      <div data-tab="opportunity" id="seg-opportunity">商机</div>
+    </div>
+    <div id="flow-list"><div class="loading">加载中…</div></div>
+  </div>
+
+  <!-- ============ 我的 ============ -->
+  <div class="section" id="sec-mine">
+    <div class="card">
+      <div class="total"><div class="num" id="mine-total">0</div><div class="lbl">当月绩效得分（满分100）</div></div>
+    </div>
+    <div class="card"><div id="mine-metrics"><div class="loading">加载中…</div></div></div>
+
+    <!-- 冒泡窗口：最近的加分记录 -->
+    <div class="bubble" id="mine-bubble">
+      <div class="bubble-hd">
+        <span class="bh-t"><span class="live"></span>最近的加分记录</span>
+        <span class="bh-s" id="bubble-sum">今日 +0</span>
+      </div>
+      <div id="bubble-list"><div class="loading">加载中…</div></div>
+      <div class="foot">加分来自真实业务行为，实时计入当月 9 项绩效指标</div>
+    </div>
+  </div>
+
+  <!-- 底部 tab -->
+  <div class="tabbar">
+    <div class="tb on" data-sec="todo"><span class="ic">✅</span>待办</div>
+    <div class="tb" data-sec="flow"><span class="ic">🔄</span>流程</div>
+    <div class="tb" data-sec="mine"><span class="ic">📊</span>我的<span class="badge" id="mine-badge" style="display:none;">1</span></div>
+  </div>
+</div>
+
+<!-- 跟进录入弹窗 -->
+<div class="mask" id="fu-mask">
+  <div class="sheet">
+    <h4 id="fu-title">录入跟进</h4>
+    <div class="irow" id="fu-irow"></div>
+    <div class="chips" id="fu-chips" style="display:none;"></div>
+    <div class="ppanel" id="fu-panel" style="display:none;">
+      <div class="psearch">
+        <input id="fu-search" placeholder="搜索名称…" />
+      </div>
+      <div class="flist" id="fu-list"></div>
+    </div>
+    <div class="field" id="fu-rel" style="display:none;">
+      <label id="fu-rel-label">关联客户</label>
+      <div class="rel-val" id="fu-rel-val">—</div>
+    </div>
+    <div class="field">
+      <label>跟进内容 <span style="color:var(--red);">*</span></label>
+      <textarea id="fu-content" placeholder="填写本次跟进内容…"></textarea>
+    </div>
+    <details class="fold open" id="fu-fold-info">
+      <summary>跟进信息（节点 / 安排 / 意向…）</summary>
+      <div class="field"><label>拜访目的</label>
+        <input id="fu-purpose" placeholder="如：介绍能源托管模式 / 商务谈判…" /></div>
+      <div class="field"><label>本次达成节点（项目阶段变更）</label>
+        <div class="chips2" id="fu-node"></div></div>
+      <div class="field"><label>后续安排</label>
+        <textarea id="fu-arr" rows="2" placeholder="如：下周提交初勘安排…（选了项目会同步项目跟进安排）"></textarea></div>
+      <div class="row2">
+        <div class="field"><label>下次跟进时间</label><input type="date" id="fu-next" /></div>
+        <div class="field"><label>有效跟进</label><div class="chips2" id="fu-eff"></div></div>
+      </div>
+      <div class="field"><label>意向（客户/商机）</label>
+        <input id="fu-intent" placeholder="如：客户有意向，等预算…" /></div>
+      <div class="field"><label>跟进反馈</label>
+        <textarea id="fu-fb" rows="2" placeholder="本次跟进的反馈与结论…"></textarea></div>
+    </details>
+    <details class="fold" id="fu-fold-stage">
+      <summary>阶段进度快照（多选，按需勾选）</summary>
+      <div id="fu-egroups"></div>
+    </details>
+    <details class="fold" id="fu-fold-insight">
+      <summary>业务洞察（选填）</summary>
+      <div id="fu-insights"></div>
+    </details>
+    <details class="fold" id="fu-fold-status">
+      <summary>项目状态变更（选填）</summary>
+      <div class="field"><label>是否更改当前阶段</label>
+        <div class="chips2" id="fu-wc"></div></div>
+      <div class="field"><label>目标项目状态</label>
+        <div class="chips2" id="fu-ps"></div></div>
+      <div class="hint">选“是”后目标状态随跟进记录留痕；发起 OA 状态变更审批流待后续确认</div>
+    </details>
+    <div class="switch" id="fu-clock-switch">
+      <div><div style="font-weight:600;">现场外勤打卡</div>
+        <div class="geo" id="fu-geo">关闭（开启后将记录定位并计拜访绩效）</div></div>
+      <div class="st" id="fu-clock-st">开启</div>
+    </div>
+    <div class="acts">
+      <button class="btn ghost" id="fu-cancel">取消</button>
+      <button class="btn" id="fu-submit">保存跟进</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const API = "";             // 同源；若后端独立部署改这里
+const API_KEY = "";         // 生产部署时由 OA 注入；与后端 MH5_API_KEY 一致；为空则关闭校验
+let UID = null, ME = null;
+let FU_CLOCK = false, FU_GEO = "", FU_PRESET = {};
+
+/* ---------- 用户解析（OA iframe：localStorage.$userInfo） ---------- */
+/* 2026-10-22 修正：企微 UA 内一律不信任本地身份（同源 localStorage 会被
+   OA 移动端深链 openId 注入/OA 网页会话污染），强制走 OAuth 静默授权；
+   $userInfo 兜底仅保留给 OA 工作台 iframe 场景。 */
+function resolveUid(wxUA){
+  const q = new URLSearchParams(location.search);
+  if(q.get("uid")) return q.get("uid");
+  if(wxUA) return null;
+  try{
+    const raw = localStorage.getItem("$userInfo");
+    if(raw){
+      const u = JSON.parse(raw);
+      if(u && (u.id || u.userId)) return (u.id || u.userId);
+    }
+  }catch(e){}
+  return null;
+}
+
+async function api(path, opts){
+  opts = opts || {};
+  opts.headers = Object.assign({}, opts.headers || {});
+  if(API_KEY) opts.headers["X-MH5-Key"] = API_KEY;
+  /* path 形如 /api/xxx：去掉开头的 /，改成相对页面路径请求（兼容子路径部署） */
+  const r = await fetch(API + path.replace(/^\/+/, ""), opts);
+  const j = await r.json().catch(()=>({success:false,message:"返回非 JSON"}));
+  if(!r.ok) throw new Error(j.message || ("HTTP "+r.status));
+  return j;
+}
+
+function el(id){ return document.getElementById(id); }
+function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,
+  c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function pad(n){ return String(n).padStart(2,"0"); }
+function todayStr(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function nowStr(){ const d=new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
+const WK = ["周日","周一","周二","周三","周四","周五","周六"];
+
+/* ---------- 登录 ---------- */
+function isWxUA(){ return /wxwork|MicroMessenger/i.test(navigator.userAgent); }
+
+async function boot(){
+  const wxUA = isWxUA();
+  UID = resolveUid(wxUA);
+  if(wxUA && !UID){
+    /* 企微内：无论本地是否有残留身份，一律 OAuth 静默授权取当前登录人
+       （同 flow-ui 链路），回跳后 URL 带 uid；全程无感 */
+    location.replace(location.origin + location.pathname + "api/wx-login");
+    return;
+  }
+  if(!UID){
+    el("role").textContent = "请在企业微信中打开（打开即自动登录；调试账号切换仅对白名单成员开放）";
+    return;
+  }
+  await boot2();
+}
+
+async function boot2(){
+  try{
+    ME = await api("/api/me?uid="+encodeURIComponent(UID));
+    if(!ME.success){ el("role").textContent = "未授权："+ME.message; return; }
+    const u = ME.user;
+    el("who").textContent = u.name + " · 市场部";
+    const role = u.is_director?"总监":(u.is_manager?"经理":"市场专员");
+    el("role").textContent = role + (u.is_leader?"（含团队视图）":"");
+    el("yy").textContent = new Date().getFullYear()+"年"+(new Date().getMonth()+1)+"月";
+    /* 选账号调试栏：仅白名单成员可见（服务端按下发 in_whitelist 判定，人员名单后端可改） */
+    const dev = el("devbar");
+    if(u.in_whitelist){
+      dev.style.display = "flex";
+      const sel = el("devUid");
+      if(!sel.options.length){
+        const list = [["1826234260","陈俊惠"],["1996234396","朱衡新"],["1826234086","王亚"],
+                      ["3440","庄磊(演示)"],["1996234395","李真(有周计划)"],["3192","贺永"],
+                      ["1826234046","张朝(北区)"],["3226","尹杰"]];
+        sel.innerHTML = list.map(x=>`<option value="${x[0]}">${x[1]}</option>`).join("");
+        sel.value = String(UID);
+        sel.onchange = ()=>{ UID = sel.value; ME=null; boot2(); };
+      }
+    }
+  }catch(e){
+    el("role").textContent = "加载失败："+e.message;
+  }
+  await Promise.all([loadTodo(), loadFlow("project"), loadMine(), loadScoreHistory()]);
+}
+
+/* ---------- Tab 切换 ---------- */
+document.querySelectorAll(".tabbar .tb").forEach(tb=>{
+  tb.onclick = ()=>{
+    document.querySelectorAll(".tabbar .tb").forEach(x=>x.classList.remove("on"));
+    tb.classList.add("on");
+    const sec = tb.dataset.sec;
+    document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
+    el("sec-"+sec).classList.add("active");
+    if(sec==="mine"){ clearBadge(); loadMine(); loadScoreHistory(); }
+  };
+});
+
+/* ============================================================
+   待办：考核清单 + 周计划（客户框可点击）+ 最近跟进
+   ============================================================ */
+async function loadTodo(){
+  try{
+    const d = await api("/api/todo?uid="+encodeURIComponent(UID));
+    el("todo-month").textContent = "目标 vs 完成";
+
+    const cl = (d.checklist||[]).map(c=>{
+      const pct = c.target? Math.min(100, Math.round((c.done||0)/c.target*100)) : 0;
+      const color = pct>=100?"var(--green)":(pct>0?"var(--accent)":"var(--grey)");
+      return `<div class="chk">
+        <span class="dot" style="background:${color}"></span>
+        <div class="info">
+          <div class="m">${esc(c.metric)} <span class="prog">${c.done}/${c.target} ${esc(c.unit)}</span></div>
+          <div class="sub">权重 ${c.weight} 分 · 还差 ${c.remain} ${esc(c.unit)}</div>
+          <div class="bar"><i style="width:${pct}%;background:${color}"></i></div>
+        </div></div>`;
+    }).join("");
+    el("todo-checklist").innerHTML = cl || `<div class="empty">暂无考核任务</div>`;
+
+    // 已录入过跟进的客户（用于客户框打「已跟进」标记）
+    DONE_CUSTOMERS = new Set(
+      (d.recent_followups||[]).map(f=>(f.associated_with_customer||"").trim()).filter(Boolean));
+    renderWeekPlan(d.week_plan||[]);
+
+    const fu = d.recent_followups||[];
+    el("todo-recent").innerHTML = fu.length
+      ? fu.map(f=>{
+          const t = (f.created_at||"").slice(5,16);
+          const att = f.field_clock? " · 📍外勤" : "";
+          return `<div class="wp-day" style="padding:7px 0;"><div class="dline" style="margin-bottom:0;">
+            <span class="d">${t}${att}</span>
+            <span style="font-size:12px;max-width:62%;text-align:right;overflow:hidden;
+              text-overflow:ellipsis;white-space:nowrap;">${esc(f.content)||"跟进"}</span>
+          </div></div>`;
+        }).join("")
+      : `<div class="empty">暂无跟进记录</div>`;
+  }catch(e){
+    el("todo-checklist").innerHTML = `<div class="err">待办加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+/* 周计划：只显示当月（后端已按月过滤）；两个客户框 → 上午框 / 下午框，点击录入跟进 */
+function renderWeekPlan(plans){
+  const box = el("todo-weekplan");
+  const now = new Date();
+  el("wp-month").textContent = `${now.getFullYear()}年${now.getMonth()+1}月`;
+  if(!plans.length){ box.innerHTML = `<div class="empty">本月暂无周计划</div>`; return; }
+
+  const today = todayStr();
+  // 已跟进过的客户（客户名集合，来自最近跟进记录）
+  const doneSet = DONE_CUSTOMERS || new Set();
+
+  box.innerHTML = plans.map(w=>{
+    const days = (w.details||[]).map(dt=>{
+      const ds = dt.date_str || "";
+      let wkLabel = "";
+      if(ds){
+        const dd = new Date(ds+"T00:00:00");
+        if(!isNaN(dd)) wkLabel = WK[dd.getDay()];
+      }
+      const isToday = ds === today;
+      const dlabel = ds ? ds.slice(5).replace("-","/") : "—";
+
+      // 上午框 / 下午框：有客户就渲染可点击框，没有就渲染虚线空框
+      const mk = (arr, cls, ampm) => {
+        if(!arr || !arr.length){
+          return `<div class="cbox none ${cls}">
+            <span class="ampm">${ampm}</span>
+            <span class="cust">未填写客户</span>
+            <span class="go">—</span></div>`;
+        }
+        return arr.map(c=>{
+          const done = doneSet.has(c);
+          return `<div class="cbox ${cls} ${done?"done":""}"
+            data-date="${esc(ds)}" data-cust="${esc(c)}"
+            data-dids="${esc((dt.detail_ids||[]).join(","))}">
+            <span class="ampm">${ampm}</span>
+            <span class="cust">${esc(c)}</span>
+            <span class="go">${done?"已跟进":"录入跟进 ›"}</span></div>`;
+        }).join("");
+      };
+
+      return `<div class="wp-day">
+        <div class="dline">
+          <span class="d">${dlabel}<span class="wk">${wkLabel}</span>
+            ${isToday?'<span class="today">今天</span>':""}</span>
+        </div>
+        <div class="cboxes">
+          ${mk(dt.morning,"am","上午")}
+          ${mk(dt.afternoon,"pm","下午")}
+        </div></div>`;
+    }).join("");
+    return `<div class="wp-week"><span class="dotx"></span>${esc(w.weekly||"周计划")}</div>${days}`;
+  }).join("");
+
+  // 客户框点击 → 打开跟进录入（预填客户 + 计划日期）
+  box.querySelectorAll(".cbox:not(.none)").forEach(b=>{
+    b.onclick = ()=> openFollowUp({
+      customer: b.dataset.cust,
+      plan_date: b.dataset.date,
+      detail_ids: b.dataset.dids,
+    });
+  });
+}
+
+/* 已跟进客户集合：用于客户框打「已跟进」标记（由 loadTodo 从最近跟进填充） */
+let DONE_CUSTOMERS = new Set();
+
+/* ============================================================
+   流程：商机 / 项目
+   ============================================================ */
+let FLOW_TAB = "project";
+document.querySelectorAll("#sec-flow .seg div").forEach(s=>{
+  s.onclick = ()=>{
+    document.querySelectorAll("#sec-flow .seg div").forEach(x=>x.classList.remove("on"));
+    s.classList.add("on");
+    FLOW_TAB = s.dataset.tab;
+    loadFlow(FLOW_TAB);
+  };
+});
+
+async function loadFlow(tab){
+  const box = el("flow-list");
+  box.innerHTML = `<div class="loading">加载中…</div>`;
+  try{
+    const d = await api("/api/flow?uid="+encodeURIComponent(UID)+"&tab="+tab);
+    const rows = d.rows||[];
+    if(!rows.length){ box.innerHTML = `<div class="empty">暂无${tab==="project"?"项目":"商机"}</div>`; return; }
+    box.innerHTML = rows.map(r=>{
+      const lb = (r.lifebar||[]).map(n=>
+        `<div class="node ${n.status}"><div class="pt"></div><div class="ln"></div>
+          <div class="lbl">${esc(n.name)}</div></div>`).join("");
+      const sub = tab==="project"
+        ? [r.project_type, r.belongs_to_regional, r.project_process_status]
+            .filter(Boolean).map(esc).join(" · ")
+        : [r.corresponding_to_customer, r.amount, r.opportunity_status]
+            .filter(Boolean).map(esc).join(" · ");
+      const na = r.next_action||{};
+      const naJson = esc(JSON.stringify(na));
+      return `<div class="item" data-id="${r.id}" data-kind="${tab}" data-action="${naJson}">
+        <div class="row">
+          <div class="tt">
+            <div class="nm">${esc(tab==="project"? r.project_name : r.theme)}</div>
+            <div class="mt">${sub}</div>
+          </div>
+          <div class="op"><button class="btn sm" data-act="jump" data-action="${naJson}">${esc(na.label||"操作")}</button></div>
+          <div class="caret">▾</div>
+        </div>
+        <div class="lifebar">${lb}</div>
+        <div class="detail" id="det-${tab}-${r.id}"></div>
+      </div>`;
+    }).join("");
+
+    box.querySelectorAll(".item").forEach(it=>{
+      const id = it.dataset.id, kind = it.dataset.kind;
+      const act = ()=> JSON.parse(it.dataset.action || "{}");
+      it.querySelector(".row").onclick = (e)=>{
+        if(e.target.dataset.act==="jump"){ jumpToOA(id, kind, act()); return; }
+        toggleDetail(id, kind, it);
+      };
+      const btn = it.querySelector("[data-act=jump]");
+      btn.onclick = (e)=>{ e.stopPropagation(); jumpToOA(id, kind, act()); };
+    });
+  }catch(e){
+    box.innerHTML = `<div class="err">流程加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+let openDetails = {};
+async function toggleDetail(id, kind, it){
+  const key = kind+"-"+id;
+  const det = el("det-"+key);
+  if(openDetails[key]){
+    det.classList.remove("open"); it.classList.remove("open");
+    openDetails[key] = false; return;
+  }
+  if(!det.dataset.loaded){
+    det.innerHTML = `<div class="loading">加载中…</div>`;
+    try{
+      const d = await api(`/api/flow-detail?uid=${encodeURIComponent(UID)}&id=${id}&kind=${kind}`);
+      if(d.success){
+        // ① 属性：英文 key 在上，中文名 + 值在下
+        const kvs = (d.fields||[]).map(f=>
+          `<div class="kv">
+            <div class="fk">${esc(f.key)}</div>
+            <div class="fv"><span class="fl">${esc(f.label)}</span><span class="vt">${esc(f.value)}</span></div>
+          </div>`).join("");
+        // ② 关联流程状态
+        const flows = (d.flows||[]).length
+          ? `<div class="sec-t">关联流程</div><div class="flows">` +
+            (d.flows||[]).map(f=>{
+              const cls = f.state===2?"done":(f.state===1?"doing":"");
+              return `<div class="f"><span class="pill ${cls}">${esc(f.state_label)}</span>${esc(f.name)}</div>`;
+            }).join("") + `</div>`
+          : "";
+        // ③ 已提交的投标 / 合同明细
+        const subs = (d.submissions||[]).map(s=>
+          `<div class="sec-t">已提交 · ${esc(s.name)}</div>` +
+          (s.fields||[]).map(f=>
+            `<div class="kv">
+              <div class="fk">${esc(f.key)}</div>
+              <div class="fv"><span class="fl">${esc(f.label)}</span><span class="vt">${esc(f.value)}</span></div>
+            </div>`).join("")).join("");
+        const na = d.next_action||{};
+        det.innerHTML =
+          `<div class="sec-t">项目属性</div>` + (kvs||`<div class="empty">暂无属性</div>`) +
+          flows + subs +
+          `<div style="margin-top:12px;"><button class="btn" data-act="jump2">${esc(na.label||"操作")}</button></div>`;
+        det.querySelector("[data-act=jump2]").onclick = (e)=>{
+          e.stopPropagation(); jumpToOA(id, kind, na);
+        };
+      }else{
+        det.innerHTML = `<div class="err">${esc(d.message)}</div>`;
+      }
+    }catch(e){ det.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+    det.dataset.loaded = "1";
+  }
+  det.classList.add("open"); it.classList.add("open");
+  openDetails[key] = true;
+}
+
+/* OA 跳转：下阶段操作（2026-10-20 改造）
+   服务端 next_action 直接下发老 OA 移动端**实证深链 URL**（制式同待办跳转，
+   openId=wx_id 免登，pageMode=add 新建 / handle 处理已有流程 / detail 看记录）。
+   有 url → 直接 window.open；无 url（异常）→ 弹参数面板兜底。
+   旧的 window.goto / postMessage 三路试探已移除（OA 无此接收端，永远静默失败）。 */
+function jumpToOA(id, kind, action){
+  const act = action || {};
+  if(act.url){
+    try{ window.open(act.url, "_blank"); toast("正在打开 OA：" + (act.label||act.model_key||"")); return; }
+    catch(e){ location.href = act.url; return; }
+  }
+  const payload = {
+    goto: "model-page",
+    modelKey: act.model_key || (kind==="project"?"project_info":"sales_opportunities"),
+    flowKey: act.flow_key || "",
+    id: id,
+    openId: (ME&&ME.user&&ME.user.wx_id) ? ME.user.wx_id : "",
+    pageMode: act.jump_mode || "add",
+  };
+  showJumpPanel(payload, act);
+}
+
+/* 跳转参数面板：OA 方法名未就绪时展示将发送的参数，支持一键复制 */
+function showJumpPanel(payload, act){
+  const txt = JSON.stringify(payload, null, 2);
+  const old = document.getElementById("jump-mask");
+  if(old) old.remove();
+  const mask = document.createElement("div");
+  mask.id = "jump-mask"; mask.className = "mask open";
+  mask.innerHTML = `
+    <div class="sheet">
+      <h4>跳转 OA 表单 · ${esc(act.label||payload.modelKey)}</h4>
+      <div style="font-size:12px;color:var(--mut);line-height:1.6;margin-bottom:10px;">
+        服务端未对本条下发跳转链接（常见原因：无企微 openId / 未找到流程实例）。参数如下，可复制给开发排查；
+        如需固定方法名，在 OA 控制台执行一次：<br>
+        <code style="background:#eaf3ec;padding:1px 5px;border-radius:4px;">如需固定跳转方法名，在 OA 控制台执行 localStorage.MH5_GOTO='方法名'</code>
+      </div>
+      <pre style="background:#f4f7fb;border:1px solid #d6deea;border-radius:8px;padding:10px;
+        font-size:11px;line-height:1.5;max-height:220px;overflow:auto;white-space:pre-wrap;
+        word-break:break-all;margin:0 0 12px;">${esc(txt)}</pre>
+      <div class="acts">
+        <button class="btn ghost" id="jump-copy">复制参数</button>
+        <button class="btn" id="jump-close">知道了</button>
+      </div>
+    </div>`;
+  document.body.appendChild(mask);
+  mask.querySelector("#jump-close").onclick = ()=> mask.remove();
+  mask.onclick = (e)=>{ if(e.target===mask) mask.remove(); };
+  mask.querySelector("#jump-copy").onclick = async ()=>{
+    try{ await navigator.clipboard.writeText(txt); toast("已复制跳转参数"); }
+    catch(e){ toast("复制失败，请手动选择复制"); }
+  };
+}
+
+/* ============================================================
+   我的：9 项绩效 + 底部冒泡（最近加分记录）
+   ============================================================ */
+async function loadMine(){
+  try{
+    const d = await api("/api/performance?uid="+encodeURIComponent(UID));
+    el("mine-total").textContent = d.total_score!=null? d.total_score : "0";
+    el("mine-metrics").innerHTML = (d.metrics||[]).map(m=>{
+      const done = (typeof m.complete==="number")? m.complete : 0;
+      const pct = m.target? Math.min(100, Math.round(done/m.target*100)) : 0;
+      const score = (typeof m.score==="number")? m.score.toFixed(1) : "—";
+      // 周计划匹配度：附 4 周计算来源（trace_score v6.1 算法）
+      let wpDetail = "";
+      if(m.key==="weekplan" && m.detail && m.detail.length){
+        wpDetail = '<div class="wpd">' + m.detail.map(r=>
+          '<div class="wpd-r"><span>'+esc(r.week)+'</span>' +
+          '<span>计划 '+r.plan_box+'框→'+r.plan_score+'分</span>' +
+          '<span>执行 '+r.actual_box+'框→'+r.exec_score+'分</span>' +
+          '<b>'+r.week_score+'分</b></div>').join('') +
+          '<div class="wpd-f">口径：每月只算前四周（1-28 日，29-31 日不计），固定 4 周平均、封顶 5 分；' +
+          '计划框≥8=2分/4-7=1分，执行框≥8=3分/4-7=2分；计划与执行均按明细日期归同一周' +
+          (m.meta && m.meta.label_mismatch_boxes ? '（本月有 ' + m.meta.label_mismatch_boxes + ' 框的表单周次与实际日期不同，已按日期归周）' : '') +
+          '</div></div>';
+      }
+      const mnote = m.note ? '<div class="wpd-f">'+esc(m.note)+'</div>' : '';
+      return `<div class="metric">
+        <div class="hd"><span class="n">${esc(m.name)}</span>
+          <span><span class="v">${m.complete!=null&&m.complete!==""?m.complete:"—"}/${m.target!=null?m.target:"—"} ${esc(m.unit||"")}</span>
+          · <span class="s">${score}分</span></span></div>
+        <div class="mbar"><i style="width:${pct}%"></i></div>${wpDetail}${mnote}</div>`;
+    }).join("") || `<div class="empty">暂无绩效数据</div>`;
+  }catch(e){
+    el("mine-metrics").innerHTML = `<div class="err">绩效加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+async function loadScoreHistory(){
+  const box = el("bubble-list");
+  const sum = el("bubble-sum");
+  try{
+    const d = await api("/api/score-history?uid="+encodeURIComponent(UID)+"&limit=15");
+    const evs = d.events||[];
+    sum.textContent = `今日 +${d.today_total!=null?d.today_total:0}`;
+    box.innerHTML = evs.length
+      ? evs.map(e=>{
+          const t = (e.time||"");
+          const short = t.length>=16 ? t.slice(5,16) : t;
+          return `<div class="sh">
+            <span class="sh-d">+${e.delta}</span>
+            <div class="sh-m">
+              <div class="sh-t">${esc(e.metric)}</div>
+              <div class="sh-n">${esc(e.note)}</div>
+            </div>
+            <span class="sh-time">${esc(short)}</span></div>`;
+        }).join("")
+      : `<div class="empty">暂无加分记录，去待办页录入跟进吧</div>`;
+  }catch(e){
+    box.innerHTML = `<div class="err">加分记录加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+/* 红点 */
+function setBadge(){ el("mine-badge").style.display = "inline-block"; }
+function clearBadge(){ el("mine-badge").style.display = "none"; }
+
+/* ============================================================
+   跟进录入弹窗（支持从周计划客户框带入客户）
+   2026-10-22 新增：客户/项目/商机 三个关联图标——
+     · 不选任何图标时只录跟进内容（+外勤打卡），行为与原来一致
+     · 点选图标展开对应选择面板，从库里挑条目后以 chip 回显、可清除
+     · 客户写 associated_with_customer（纯文本）；项目/商机写 id
+   ============================================================ */
+const FU_ICONS = [
+  {type:"customer", ic:"🏢", label:"客户", hint:"关联客户"},
+  {type:"project",  ic:"🏗️", label:"项目", hint:"关联项目"},
+  {type:"opportunity", ic:"💼", label:"商机", hint:"关联商机"},
+];
+let PU_TYPE = null;                       /* 当前展开的选择面板类型 */
+let PU_ITEMS = [];                        /* 面板当前候选 */
+const PU_SEL = {customer:null, project:null, opportunity:null};
+/* customer 存字符串；project/opportunity 存 {id, name, rel} —— rel=带出客户/业主单位。
+   2026-10-22 对齐原外勤打卡表单：三选一（选一个自动清其它），并新增表单分区字段 */
+let PU_SEARCH_T = null;
+
+/* ---- 原外勤打卡表单字典（与 server.py 保持一致；ids 依生产数据反查） ---- */
+const NODE_OPTS = ["公司内部立项","业主内部立项","招标意向公示","招标挂网"];
+const EFF_OPTS = ["是","否"];
+const PS_OPTS = [["商机确认",0],["前期评估",1],["项目立项",2],["项目采购",3],
+                 ["合同签订",4],["项目实施",5],["运营管理",6],["项目终止",7]];
+const E_GROUPS = [
+  {key:"pre_data_collection", label:"前期沟通与资料收集", opts:[
+    "项目建筑概况","年度能耗规模","政策沟通","介绍能源托管模式",
+    "对接了客户主管部门","对接了客户主要领导","项目产权及经营管理主体"]},
+  {key:"pre_investigation_confirmation", label:"初步勘察确认", opts:[
+    "3~5年能耗分析数据","供热模式及系统情况","供冷模式及系统情况","供水系统情况",
+    "变配电系统情况","新能源建设情况","数字化平台建设情况",
+    "运维人员数量及费用","年度维修维护情况及费用","初步经济性评估"]},
+  {key:"plan_formulation_and_communication", label:"方案编制及沟通", opts:[
+    "经济测算评估可行","项目托管边界","能源基准期","节能改造措施要求",
+    "客户同意采用能源托管模式合作"]},
+  {key:"internal_project_initiation", label:"内部立项", opts:[
+    "提供项目建议方案","客户上会立项","确定能源审计单位","完成能源审计报告",
+    "完成能源费用托管实施方案及专家评审","方案上会批准实施"]},
+  {key:"bidding_and_tendering_stage", label:"招投标阶段", opts:[
+    "客户确定招标代理公司","客户发出采购予公告","了解招标文件编制进展及内容",
+    "了解评标办法评分标准","招标挂网","投标","定标","合同签订",
+    "内部合同交底/项目移交"]},
+];
+const INSIGHT_FIELDS = [
+  {key:"decision_making_department_information", label:"决策部门信息"},
+  {key:"competitor_information", label:"竞争对手信息"},
+  {key:"risk_discovery_identification", label:"风险发现与识别"},
+  {key:"our_advantages", label:"我方优势"},
+  {key:"required_support", label:"需要的支持"},
+  {key:"owner_feedback", label:"业主对已提交方案的反馈"},
+];
+/* 表单分区临时状态（openFollowUp 时重置） */
+const FU2 = {node:"", eff:"", wc:"", ps:"", e:{}, insight:{}};
+E_GROUPS.forEach(g=> FU2.e[g.key] = new Set());
+INSIGHT_FIELDS.forEach(f=> FU2.insight[f.key] = "");
+
+function selLabel(type){
+  const v = PU_SEL[type];
+  if(!v) return "";
+  return typeof v === "string" ? v : (v.name || "");
+}
+
+function renderFuIcons(){
+  el("fu-irow").innerHTML = FU_ICONS.map(i=>{
+    const on = !!PU_SEL[i.type];
+    return `<div class="iopt ${on?"on":""} ${PU_TYPE===i.type?"exp":""}" data-type="${i.type}" title="${i.hint}">
+      <span class="ic">${i.ic}</span><span class="t">${on? esc(selLabel(i.type)) : i.label}</span></div>`;
+  }).join("");
+}
+
+function renderFuChips(){
+  const parts = FU_ICONS.filter(i=>PU_SEL[i.type])
+    .map(i=>`<span class="chip" data-type="${i.type}">${i.label}：<span>${esc(selLabel(i.type))}</span> <b>×</b></span>`);
+  const box = el("fu-chips");
+  box.style.display = parts.length? "flex":"none";
+  box.innerHTML = parts.join("");
+}
+
+function closeFuPanel(){
+  PU_TYPE = null;
+  el("fu-panel").style.display = "none";
+  renderFuIcons(); renderFuChips();
+}
+
+async function loadFuOptions(type, q){
+  try{
+    const d = await api("/api/pickers?uid="+encodeURIComponent(UID)+"&q="+encodeURIComponent(q||""));
+    renderFuList(type, d);
+  }catch(e){
+    el("fu-list").innerHTML = `<div class="err">候选加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+function renderFuList(type, d){
+  const box = el("fu-list");
+  let items = [];
+  if(type === "customer")
+    items = (d.customers||[]).map(v=>({val:v, m:v}));
+  else if(type === "project")
+    items = (d.projects||[]).map(r=>({val:{id:r.id, name:r.project_name,
+      rel:r.correlation_information||""}, m:r.project_name, sub:r.item_no||""}));
+  else
+    items = (d.opportunities||[]).map(r=>({val:{id:r.id, name:r.theme,
+      rel:r.corresponding_to_customer||""}, m:r.theme, sub:r.corresponding_to_customer||""}));
+  PU_ITEMS = items;
+  if(!items.length){
+    box.innerHTML = `<div class="empty">无匹配条目</div>`;
+    return;
+  }
+  const cur = PU_SEL[type];
+  box.innerHTML = items.map((it, idx)=>{
+    const isSel = type==="customer"? cur===it.val : (cur && cur.id===it.val.id);
+    return `<div class="fitem ${isSel?"on":""}" data-i="${idx}">
+      <div class="fm">${esc(it.m)}${isSel?" ✓":""}</div>
+      ${it.sub? `<div class="fs">${esc(it.sub)}</div>` : ""}</div>`;
+  }).join("");
+  box.querySelectorAll(".fitem").forEach(n=>{
+    n.onclick = ()=>{
+      const it = PU_ITEMS[+n.dataset.i];
+      if(!it) return;
+      /* 三选一：选择一个自动清其它（对齐原外勤打卡表单 one_out_of_three） */
+      Object.keys(PU_SEL).forEach(k=>{ PU_SEL[k] = null; });
+      PU_SEL[type] = it.val;
+      closeFuPanel();
+      renderFuRel();
+    };
+  });
+}
+
+/* 关联带出走马灯行：项目→关联客户；商机→业主单位；客户→隐藏 */
+function renderFuRel(){
+  const row = el("fu-rel"), lab = el("fu-rel-label"), val = el("fu-rel-val");
+  let name = "", v = "";
+  if(PU_SEL.project){ name = "关联客户（带出）"; v = PU_SEL.project.rel || ""; }
+  else if(PU_SEL.opportunity){ name = "业主单位（带出）"; v = PU_SEL.opportunity.rel || ""; }
+  row.style.display = name? "block" : "none";
+  if(name){ lab.textContent = name; val.textContent = v || "该条目未录入关联客户"; }
+}
+
+function openFuPanel(type){
+  PU_TYPE = type;
+  renderFuIcons(); renderFuChips();
+  el("fu-panel").style.display = "block";
+  el("fu-search").value = "";
+  el("fu-list").innerHTML = `<div class="loading">加载中…</div>`;
+  loadFuOptions(type, "");
+}
+
+el("fu-irow").onclick = ev=>{
+  const n = ev.target.closest(".iopt");
+  if(!n) return;
+  if(PU_TYPE === n.dataset.type) closeFuPanel();
+  else openFuPanel(n.dataset.type);
+};
+el("fu-chips").onclick = ev=>{
+  const c = ev.target.closest(".chip");
+  if(!c) return;
+  PU_SEL[c.dataset.type] = null;
+  renderFuIcons(); renderFuChips();
+};
+el("fu-search").oninput = ()=>{
+  clearTimeout(PU_SEARCH_T);
+  PU_SEARCH_T = setTimeout(()=> loadFuOptions(PU_TYPE, el("fu-search").value.trim()), 300);
+};
+el("fu-chips").onclick = ev=>{
+  const c = ev.target.closest(".chip");
+  if(!c) return;
+  PU_SEL[c.dataset.type] = null;
+  renderFuIcons(); renderFuChips(); renderFuRel();
+};
+
+/* ---------- 表单分区（跟进信息 / 阶段快照 / 洞察 / 状态变更） ---------- */
+function chipRow(boxId, opts, get, set){
+  const box = el(boxId);
+  box.innerHTML = opts.map(o=>`<span class="c2 ${get()===o?"on":""}">${o}</span>`).join("");
+  box.querySelectorAll(".c2").forEach(n=> n.onclick = ()=>{
+    set(get() === n.textContent? "" : n.textContent);
+    chipRow(boxId, opts, get, set);
+  });
+}
+function renderFuNodes(){ chipRow("fu-node", NODE_OPTS, ()=>FU2.node, v=>FU2.node=v); }
+function renderFuEff(){ chipRow("fu-eff", EFF_OPTS, ()=>FU2.eff, v=>FU2.eff=v); }
+function renderFuWc(){ chipRow("fu-wc", EFF_OPTS, ()=>FU2.wc, v=>FU2.wc=v); }
+function renderFuPs(){
+  const box = el("fu-ps");
+  box.innerHTML = PS_OPTS.map(([t,i])=>
+    `<span class="c2${FU2.ps===""+i?" on":""}" data-v="${i}">${t}</span>`).join("");
+  box.querySelectorAll(".c2").forEach(n=> n.onclick = ()=>{
+    FU2.ps = (FU2.ps===n.dataset.v? "" : n.dataset.v);
+    renderFuPs();
+  });
+}
+function renderFuEgroups(){
+  el("fu-egroups").innerHTML = E_GROUPS.map(g=>
+    `<div class="egroup"><div class="gl">${g.label}</div>
+     <div class="chips2" data-k="${g.key}">${g.opts.map(o=>
+       `<span class="c2${FU2.e[g.key].has(o)?" on":""}">${o}</span>`).join("")}</div></div>`).join("");
+  el("fu-egroups").querySelectorAll(".chips2").forEach(box=>{
+    const key = box.dataset.k;
+    const g = E_GROUPS.find(x=>x.key===key);
+    box.querySelectorAll(".c2").forEach(n=> n.onclick = ()=>{
+      const t = n.textContent;
+      FU2.e[key].has(t)? FU2.e[key].delete(t) : FU2.e[key].add(t);
+      n.classList.toggle("on");
+    });
+  });
+}
+function renderFuInsights(){
+  el("fu-insights").innerHTML = INSIGHT_FIELDS.map(f=>
+    `<div class="egroup"><div class="gl">${f.label}</div>
+     <textarea rows="2" data-k="${f.key}">${esc(FU2.insight[f.key]||"")}</textarea></div>`).join("");
+  el("fu-insights").querySelectorAll("textarea").forEach(t=> t.oninput = ()=>{
+    FU2.insight[t.dataset.k] = t.value.trim();
+  });
+}
+
+/* ---------- 重置表单分区 ---------- */
+function resetFuForm(){
+  FU2.node = ""; FU2.eff = ""; FU2.wc = ""; FU2.ps = "";
+  E_GROUPS.forEach(g=> FU2.e[g.key] = new Set());
+  INSIGHT_FIELDS.forEach(f=> FU2.insight[f.key] = "");
+  el("fu-purpose").value = "";
+  el("fu-arr").value = "";
+  el("fu-next").value = "";
+  el("fu-intent").value = "";
+  el("fu-fb").value = "";
+  el("fu-fold-info").open = true;
+  el("fu-fold-stage").open = false;
+  el("fu-fold-insight").open = false;
+  el("fu-fold-status").open = false;
+  renderFuNodes(); renderFuEff(); renderFuWc(); renderFuPs();
+  renderFuEgroups(); renderFuInsights();
+}
+
+function openFollowUp(preset){
+  FU_PRESET = preset || {};
+  const cust = FU_PRESET.customer || "";
+  el("fu-title").textContent = cust ? "录入跟进 · " + cust : "录入跟进";
+  /* 重置：从周计划客户框带入时，客户图标自动置为已关联 */
+  PU_SEL.customer = cust || null;
+  PU_SEL.project = null;
+  PU_SEL.opportunity = null;
+  closeFuPanel();
+
+  el("fu-content").value = "";
+  FU_CLOCK = false; FU_GEO = "";
+  el("fu-geo").textContent = "关闭（开启后将记录定位并计拜访绩效）";
+  el("fu-clock-st").textContent = "开启";
+  resetFuForm();
+  renderFuRel();
+  el("fu-mask").classList.add("open");
+}
+el("fu-cancel").onclick = ()=> el("fu-mask").classList.remove("open");
+el("fu-clock-switch").onclick = ()=>{
+  FU_CLOCK = !FU_CLOCK;
+  el("fu-clock-st").textContent = FU_CLOCK? "已开启":"开启";
+  if(FU_CLOCK){
+    if(navigator.geolocation){
+      el("fu-geo").textContent = "定位中…";
+      navigator.geolocation.getCurrentPosition(pos=>{
+        FU_GEO = pos.coords.latitude.toFixed(5)+","+pos.coords.longitude.toFixed(5);
+        el("fu-geo").textContent = "已定位："+FU_GEO;
+      }, ()=>{ el("fu-geo").textContent = "定位失败，仍会计拜访绩效"; });
+    }else{ el("fu-geo").textContent = "设备不支持定位，仍会计拜访绩效"; }
+  }else{ el("fu-geo").textContent = "关闭（开启后将记录定位并计拜访绩效）"; }
+};
+el("fu-submit").onclick = async ()=>{
+  const content = el("fu-content").value.trim();
+  if(!content){ toast("请填写跟进内容"); return; }
+  if(FU2.wc === "是" && FU2.ps === ""){ toast("选了'是否更改当前阶段=是'，请选择目标项目状态"); return; }
+  const btn = el("fu-submit");
+  btn.disabled = true; btn.textContent = "保存中…";
+  /* object_kind：三选一，对齐原外勤打卡表单 one_out_of_three */
+  const kind = PU_SEL.project? "project" : (PU_SEL.opportunity? "opp" : (PU_SEL.customer? "customer" : ""));
+  const body = {
+    uid: UID,
+    content,
+    object_kind: kind,
+    related_projects_id: PU_SEL.project? Number(PU_SEL.project.id) : null,
+    sales_opportunities_id: PU_SEL.opportunity? Number(PU_SEL.opportunity.id) : null,
+    associated_with_customer: PU_SEL.customer || "",
+    plan_detail_id: FU_PRESET.detail_ids || "",
+    field_clock: FU_CLOCK? nowStr() : "",
+    map_location: FU_CLOCK? FU_GEO : "",
+    /* 跟进信息 */
+    visit_purpose: el("fu-purpose").value.trim(),
+    this_follow_up_node: FU2.node,
+    follow_up_arrangement: el("fu-arr").value.trim(),
+    next_follow_up_time: el("fu-next").value,
+    effective_follow_up: FU2.eff,
+    intention: el("fu-intent").value.trim(),
+    follow_up_feedback: el("fu-fb").value.trim(),
+    /* 项目状态变更（仅留痕） */
+    whether_change: FU2.wc,
+    project_status: FU2.ps,
+    /* 业务洞察 */
+    decision_making_department_information: FU2.insight.decision_making_department_information || "",
+    competitor_information: FU2.insight.competitor_information || "",
+    risk_discovery_identification: FU2.insight.risk_discovery_identification || "",
+    our_advantages: FU2.insight.our_advantages || "",
+    required_support: FU2.insight.required_support || "",
+    owner_feedback: FU2.insight.owner_feedback || "",
+    /* 五组阶段进度快照（多选 → 逗号串） */
+    pre_data_collection: [...(FU2.e.pre_data_collection||[])],
+    pre_investigation_confirmation: [...(FU2.e.pre_investigation_confirmation||[])],
+    plan_formulation_and_communication: [...(FU2.e.plan_formulation_and_communication||[])],
+    internal_project_initiation: [...(FU2.e.internal_project_initiation||[])],
+    bidding_and_tendering_stage: [...(FU2.e.bidding_and_tendering_stage||[])],
+  };
+  try{
+    const d = await api("/api/follow-up",
+      {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+    if(d.success){
+      el("fu-mask").classList.remove("open");
+      // 标记该客户框已跟进
+      const cust = PU_SEL.customer || FU_PRESET.customer || "";
+      if(cust){
+        DONE_CUSTOMERS.add(cust);
+      }
+      setBadge();
+      toast(d.message || (FU_CLOCK? "跟进已保存，外勤打卡已计拜访绩效" : "跟进已保存"));
+      await Promise.all([loadTodo(), loadMine(), loadScoreHistory()]);
+      if(d.score_delta && Number(d.score_delta) > 0){
+        toast(`刚刚的跟进已加分：+${d.score_delta} 分`);
+      }
+    }else{ toast("保存失败："+d.message); }
+  }catch(e){ toast("保存失败："+e.message); }
+  finally{ btn.disabled = false; btn.textContent = "保存跟进"; }
+};
+
+/* ---------- toast ---------- */
+let toastTimer=null;
+function toast(msg){
+  const t = el("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(()=>t.classList.remove("show"), 2600);
+}
+
+/* ---------- 启动 ---------- */
+boot();
+</script>
+</body>
+</html>
