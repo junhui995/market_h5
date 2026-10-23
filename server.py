@@ -76,6 +76,35 @@ WX_SECRET = os.getenv("MH5_WX_SECRET", "").strip()
 LANDING = os.getenv("MH5_LANDING", "https://huafu.china-ktbm.com").rstrip("/")
 MH5_HREF = LANDING + "/statics/api/mh5/"
 
+# ============================================================
+# 写入审计（2026-10-23 生产部署启用）：
+#   每一笔写（INSERT/UPDATE）落 JSONL，含行 id + 写入值 + 更新前值，
+#   供 rollback.py 依据"审计行"反推 SQL 撤销脏数据。
+#   文件：{MH5_AUDIT_DIR}/write_audit_YYYYMMDD.jsonl
+# ============================================================
+AUDIT_DIR = os.getenv("MH5_AUDIT_DIR", "/opt/market_h5/audit")
+_AUDIT_LOCK = threading.Lock()
+
+
+def _audit(req, uid, name, acts):
+    """acts: [{"action":"insert","table":t,"id":rowid,"row":{...}},
+              {"action":"update","table":t,"id":rowid,"before":{...},"after":{...}}]"""
+    if not acts:
+        return
+    entry = {"ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+             "req": req, "uid": uid, "name": name, "acts": acts}
+    try:
+        os.makedirs(AUDIT_DIR, exist_ok=True)
+        path = os.path.join(AUDIT_DIR, "write_audit_%s.jsonl" %
+                            date.today().strftime("%Y%m%d"))
+        with _AUDIT_LOCK:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+        sys.stderr.write("mh5 audit: req=%s uid=%s acts=%s\n"
+                         % (req, uid, ",".join(a["action"] + ":" + a["table"] for a in acts)))
+    except Exception as e:
+        sys.stderr.write("mh5 audit WRITE-FAILED(写库已提交，审计留痕失败): %s\n" % str(e)[:200])
+
 # 调试账号切换（devbar）白名单：仅这些人可见选账号栏（用户 2026-10-20 指定）。
 # 姓名按包含匹配（库里显示名常带部门前缀），wx_id 精确兜底（三人事先连库锁定）。
 WHITELIST_NAMES = [s.strip() for s in os.getenv(
@@ -1843,6 +1872,7 @@ def create_follow_up(body):
 
     one_out = ONE_OUT.get(kind)
     new_id = chcks_id = None
+    audit_row_f = audit_row_c = None
     conn = get_connection()
     try:
         with conn.cursor() as cur:
@@ -1856,7 +1886,8 @@ def create_follow_up(body):
             proj = opp = cust_id = None
             if pid_int is not None:
                 cur.execute(
-                    "SELECT project_name, project_phase, follow_up_arrangement "
+                    "SELECT project_name, project_phase, project_phase_id, "
+                    "follow_up_state, follow_up_state_id, follow_up_arrangement "
                     "FROM project_info WHERE id=%s AND deleted_at IS NULL", (pid_int,))
                 proj = cur.fetchone()
             if oid_int is not None:
@@ -1926,6 +1957,8 @@ def create_follow_up(body):
                 % (", ".join(rec), ", ".join(["%s"] * len(rec))),
                 tuple(rec.values()))
             new_id = conn.insert_id()
+            audit_row_f = dict(rec)
+            audit_row_f["id"] = new_id
 
             # ---- 外勤打卡：同步写 chcks（type=2 市场部日报，whether_field=1 外勤）----
             if field_clock:
@@ -1980,6 +2013,8 @@ def create_follow_up(body):
                        ", ".join(["%s"] * len(ch))),
                     tuple(ch.values()))
                 chcks_id = conn.insert_id()
+                audit_row_c = dict(ch)
+                audit_row_c["id"] = chcks_id
         conn.commit()
     except Exception:
         conn.rollback()
@@ -1988,6 +2023,13 @@ def create_follow_up(body):
         conn.close()
 
     # ---- 项目分支回写（best-effort，失败不影响已保存的跟进）----
+    acts = []
+    if audit_row_f:
+        acts.append({"action": "insert", "table": "follow_up_record", "id": new_id,
+                     "row": audit_row_f})
+    if audit_row_c:
+        acts.append({"action": "insert", "table": "chcks", "id": chcks_id,
+                     "row": audit_row_c})
     if kind == "project" and proj is not None:
         try:
             c2 = get_connection()
@@ -2002,6 +2044,14 @@ def create_follow_up(body):
                     "UPDATE project_info SET %s WHERE id=%%s"
                     % ", ".join(k + "=%s" for k in sets),
                     tuple(sets.values()) + (pid_int,))
+                acts.append({"action": "update", "table": "project_info", "id": pid_int,
+                             "before": {"project_phase": proj.get("project_phase"),
+                                        "project_phase_id": proj.get("project_phase_id"),
+                                        "follow_up_state": proj.get("follow_up_state"),
+                                        "follow_up_state_id": proj.get("follow_up_state_id"),
+                                        "follow_up_arrangement":
+                                            proj.get("follow_up_arrangement")},
+                             "after": sets})
                 old_phase = proj.get("project_phase")
                 if node and node != old_phase:
                     cur2.execute(
@@ -2011,6 +2061,15 @@ def create_follow_up(body):
                         "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                         (proj["project_name"], str(pid_int), node, str(NODE_ID[node]),
                          creator, u["id"], "考勤打卡", now_s, now_s))
+                    acts.append({"action": "insert", "table": "project_phase_logs",
+                                 "id": c2.insert_id(),
+                                 "row": {"project_name": proj["project_name"],
+                                         "project_name_id": str(pid_int),
+                                         "project_phase": node,
+                                         "project_phase_id": str(NODE_ID[node]),
+                                         "creator": creator, "creator_id": u["id"],
+                                         "type": "考勤打卡",
+                                         "created_at": now_s, "updated_at": now_s}})
                 # 为"上次跟进"快照回填本条（仅项目分支有）
                 upd = {"last_follow_up_node": old_phase or None,
                        "last_follow_up_arrangement": proj.get("follow_up_arrangement") or None}
@@ -2018,6 +2077,10 @@ def create_follow_up(body):
                     "UPDATE follow_up_record SET last_follow_up_node=%s, "
                     "last_follow_up_arrangement=%s WHERE id=%s",
                     (upd["last_follow_up_node"], upd["last_follow_up_arrangement"], new_id))
+                acts.append({"action": "update", "table": "follow_up_record", "id": new_id,
+                             "before": {"last_follow_up_node": None,
+                                        "last_follow_up_arrangement": None},
+                             "after": upd})
             c2.commit()
             c2.close()
         except Exception as e:
@@ -2025,6 +2088,7 @@ def create_follow_up(body):
                 sys.stderr.write("mh5 writeback warn: %s\n" % str(e)[:200])
             except Exception:
                 pass
+    _audit("follow-up", u["id"], creator, acts)
 
     # 明确加分与提示（score_delta=0 或缺失 → 前端只提示已保存）
     if field_clock:
@@ -2149,6 +2213,18 @@ def create_clock(body):
             conn.close()
         except Exception:
             pass
+
+    _audit("clock", u["id"], creator, [{"action": "insert", "table": "chcks",
+                                        "id": new_id,
+                                        "row": {"type": ctype,
+                                                "whether_field": 1 if is_field else 0,
+                                                "clock_in_type": clock_in_type,
+                                                "x": lng, "y": lat,
+                                                "message": note or None,
+                                                "content": content or None,
+                                                "created_date": today,
+                                                "created_time": now_db.strftime(
+                                                    "%Y-%m-%d %H:%M:%S")}}])
 
     return {"success": True, "clock_id": new_id,
             "kind": "field" if is_field else "in",
